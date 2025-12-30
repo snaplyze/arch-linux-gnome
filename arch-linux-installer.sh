@@ -326,7 +326,7 @@ properties_preset_source() {
     else
         # Select preset
         local preset options
-        options=("desktop - GNOME Desktop Environment (default)" "core    - Minimal Arch Linux TTY Environment" "none    - No pre-selection")
+        options=("desktop - Desktop Environment (GNOME/COSMIC)" "core    - Minimal Arch Linux TTY Environment" "none    - No pre-selection")
         preset=$(gum_choose --header "+ Choose Setup Preset" "${options[@]}") || trap_gum_exit_confirm
         [ -z "$preset" ] && return 1 # Check if new value is null
         preset="$(echo "$preset" | awk '{print $1}')"
@@ -356,7 +356,7 @@ properties_preset_source() {
             ARCH_LINUX_HOUSEKEEPING_ENABLED='true'
             ARCH_LINUX_SHELL_ENHANCEMENT_ENABLED='true'
             ARCH_LINUX_AUR_HELPER='paru'
-            ARCH_LINUX_DESKTOP_TYPE='gnome'
+            # ARCH_LINUX_DESKTOP_TYPE='gnome' # Do not set default here to allow selection menu later
         fi
 
         # Write properties
