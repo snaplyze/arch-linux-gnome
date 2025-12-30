@@ -1,4 +1,4 @@
-# arch-linux-gnome
+# Arch Linux
 
 ## Быстрая установка
 
