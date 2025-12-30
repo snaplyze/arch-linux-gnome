@@ -609,7 +609,8 @@ select_desktop_type() {
 # ---------------------------------------------------------------------------------------------------
 
 select_enable_desktop_slim() {
-    if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ]; then
+    # Only applicable for GNOME desktop
+    if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ] && [ "$ARCH_LINUX_DESKTOP_TYPE" = "gnome" ]; then
         if [ -z "$ARCH_LINUX_DESKTOP_SLIM_ENABLED" ]; then
             local user_input
             gum_confirm "Enable Desktop Slim Mode? (GNOME Core Apps only)"
