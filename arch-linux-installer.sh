@@ -112,6 +112,7 @@ main() {
         until select_disk; do :; done
         echo && gum_title "Desktop Setup"
         until select_enable_desktop_environment; do :; done
+        until select_desktop_type; do :; done
         until select_enable_desktop_driver; do :; done
         until select_enable_desktop_slim; do :; done
         until select_enable_desktop_keyboard; do :; done
@@ -172,6 +173,7 @@ main() {
     exec_install_housekeeping
     exec_install_shell_enhancement
     exec_install_desktop
+    exec_install_cosmic_desktop
     exec_install_graphics_driver
     exec_install_vm_support
     exec_finalize_arch_linux
@@ -286,6 +288,7 @@ properties_generate() {
         echo "ARCH_LINUX_SHELL_ENHANCEMENT_ENABLED='${ARCH_LINUX_SHELL_ENHANCEMENT_ENABLED}' # Shell Enhancement | Disable: false"
         echo "ARCH_LINUX_SHELL_ENHANCEMENT_FISH_ENABLED='${ARCH_LINUX_SHELL_ENHANCEMENT_FISH_ENABLED}' # Enable fish shell | Default: true | Disable: false"
         echo "ARCH_LINUX_DESKTOP_ENABLED='${ARCH_LINUX_DESKTOP_ENABLED}' # Arch Linux Desktop (caution: if disabled, only a minimal tty will be provied)| Disable: false"
+        echo "ARCH_LINUX_DESKTOP_TYPE='${ARCH_LINUX_DESKTOP_TYPE}' # Desktop type | Available: gnome, cosmic | Default: gnome"
         echo "ARCH_LINUX_DESKTOP_GRAPHICS_DRIVER='${ARCH_LINUX_DESKTOP_GRAPHICS_DRIVER}' # Graphics Driver | Disable: none | Available: mesa, intel_i915, nvidia, amd, ati"
         echo "ARCH_LINUX_DESKTOP_EXTRAS_ENABLED='${ARCH_LINUX_DESKTOP_EXTRAS_ENABLED}' # Enable desktop extra packages (caution: if disabled, only core + gnome + git packages will be installed) | Disable: false"
         echo "ARCH_LINUX_DESKTOP_SLIM_ENABLED='${ARCH_LINUX_DESKTOP_SLIM_ENABLED}' # Enable Sim Desktop (only GNOME Core Apps) | Default: false"
@@ -310,6 +313,7 @@ properties_preset_source() {
     [ -z "$ARCH_LINUX_SAMBA_SHARE_ENABLED" ] && ARCH_LINUX_SAMBA_SHARE_ENABLED="true"
     [ -z "$ARCH_LINUX_ECN_ENABLED" ] && ARCH_LINUX_ECN_ENABLED="true"
     [ -z "$ARCH_LINUX_VM_SUPPORT_ENABLED" ] && ARCH_LINUX_VM_SUPPORT_ENABLED="true"
+    [ -z "$ARCH_LINUX_DESKTOP_TYPE" ] && ARCH_LINUX_DESKTOP_TYPE="gnome"
 
     # Set microcode
     [ -z "$ARCH_LINUX_MICROCODE" ] && grep -E "GenuineIntel" &>/dev/null <<<"$(lscpu)" && ARCH_LINUX_MICROCODE="intel-ucode"
@@ -337,6 +341,7 @@ properties_preset_source() {
             ARCH_LINUX_BOOTSPLASH_ENABLED='false'
             ARCH_LINUX_DESKTOP_GRAPHICS_DRIVER="none"
             ARCH_LINUX_AUR_HELPER='none'
+            ARCH_LINUX_DESKTOP_TYPE='gnome'
         fi
 
         # Desktop preset
@@ -351,6 +356,7 @@ properties_preset_source() {
             ARCH_LINUX_HOUSEKEEPING_ENABLED='true'
             ARCH_LINUX_SHELL_ENHANCEMENT_ENABLED='true'
             ARCH_LINUX_AUR_HELPER='paru'
+            ARCH_LINUX_DESKTOP_TYPE='gnome'
         fi
 
         # Write properties
@@ -570,7 +576,7 @@ select_enable_bootsplash() {
 select_enable_desktop_environment() {
     if [ -z "$ARCH_LINUX_DESKTOP_ENABLED" ]; then
         local user_input
-        gum_confirm "Enable GNOME Desktop Environment?"
+        gum_confirm "Enable Desktop Environment?"
         local user_confirm=$?
         [ $user_confirm = 130 ] && {
             trap_gum_exit_confirm
@@ -581,6 +587,23 @@ select_enable_desktop_environment() {
         ARCH_LINUX_DESKTOP_ENABLED="$user_input" && properties_generate # Set value and generate properties file
     fi
     gum_property "Desktop Environment" "$ARCH_LINUX_DESKTOP_ENABLED"
+    return 0
+}
+
+# ---------------------------------------------------------------------------------------------------
+
+select_desktop_type() {
+    if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ]; then
+        if [ -z "$ARCH_LINUX_DESKTOP_TYPE" ]; then
+            local user_input options
+            options=("gnome - GNOME Desktop (stable, recommended)" "cosmic - COSMIC Desktop (alpha, Wayland-only)")
+            user_input=$(gum_choose --header "+ Choose Desktop Environment" "${options[@]}") || trap_gum_exit_confirm
+            [ -z "$user_input" ] && return 1
+            user_input=$(echo "$user_input" | awk '{print $1}')
+            ARCH_LINUX_DESKTOP_TYPE="$user_input" && properties_generate # Set value and generate properties file
+        fi
+        gum_property "Desktop Type" "$ARCH_LINUX_DESKTOP_TYPE"
+    fi
     return 0
 }
 
@@ -1058,7 +1081,7 @@ exec_pacstrap_core() {
 
 exec_install_desktop() {
     local process_name="GNOME Desktop"
-    if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ]; then
+    if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ] && [ "$ARCH_LINUX_DESKTOP_TYPE" = "gnome" ]; then
         process_init "$process_name"
         (
             [ "$DEBUG" = "true" ] && sleep 1 && process_return 0 # If debug mode then return
@@ -1377,7 +1400,176 @@ exec_install_desktop() {
 
 # ---------------------------------------------------------------------------------------------------
 
+exec_install_cosmic_desktop() {
+    local process_name="COSMIC Desktop"
+    if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ] && [ "$ARCH_LINUX_DESKTOP_TYPE" = "cosmic" ]; then
+        process_init "$process_name"
+        (
+            [ "$DEBUG" = "true" ] && sleep 1 && process_return 0 # If debug mode then return
+
+            local packages=()
+
+            # COSMIC core packages (from extra repository)
+            packages+=(cosmic xdg-user-dirs git)
+
+            # COSMIC desktop extras
+            if [ "$ARCH_LINUX_DESKTOP_EXTRAS_ENABLED" = "true" ]; then
+
+                # Power management
+                packages+=(power-profiles-daemon packagekit)
+
+                # COSMIC wayland portal support
+                packages+=(xdg-utils xdg-desktop-portal xdg-desktop-portal-cosmic flatpak)
+
+                # Audio (Pipewire replacements + session manager)
+                packages+=(pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber)
+                [ "$ARCH_LINUX_MULTILIB_ENABLED" = "true" ] && packages+=(lib32-pipewire lib32-pipewire-jack)
+
+                # Networking & Access
+                packages+=(samba rsync gvfs gvfs-mtp gvfs-smb gvfs-nfs gvfs-afc gvfs-gphoto2 gvfs-dnssd gvfs-wsdd)
+                packages+=(modemmanager network-manager-sstp networkmanager-l2tp networkmanager-vpnc networkmanager-pptp networkmanager-openvpn networkmanager-openconnect networkmanager-strongswan)
+
+                # Kernel headers
+                packages+=("${ARCH_LINUX_KERNEL}-headers")
+
+                # Utils
+                packages+=(base-devel archlinux-contrib pacutils fwupd bash-completion dhcp net-tools inetutils nfs-utils e2fsprogs f2fs-tools udftools dosfstools ntfs-3g exfat-utils btrfs-progs xfsprogs p7zip zip unzip unrar tar wget curl)
+
+                # Runtimes, Builder & Helper
+                packages+=(gdb python go rust nodejs npm lua cmake jq fzf)
+
+                # Certificates
+                packages+=(ca-certificates)
+
+                # Codecs
+                packages+=(ffmpeg ffmpegthumbnailer gstreamer gst-libav gst-plugin-pipewire gst-plugins-good gst-plugins-bad gst-plugins-ugly libdvdcss libheif webp-pixbuf-loader opus speex libvpx libwebp)
+                packages+=(a52dec faac faad2 flac jasper lame libdca libdv libmad libmpeg2 libtheora libvorbis libxv wavpack x264 xvidcore libdvdnav libdvdread openh264)
+                [ "$ARCH_LINUX_MULTILIB_ENABLED" = "true" ] && packages+=(lib32-gstreamer lib32-gst-plugins-good lib32-libvpx lib32-libwebp)
+
+                # Optimization
+                packages+=(gamemode)
+                [ "$ARCH_LINUX_MULTILIB_ENABLED" = "true" ] && packages+=(lib32-gamemode)
+
+                # Fonts
+                packages+=(ttf-firacode-nerd ttf-nerd-fonts-symbols ttf-font-awesome noto-fonts noto-fonts-emoji ttf-liberation ttf-dejavu adobe-source-sans-fonts adobe-source-serif-fonts)
+            fi
+
+            # Installing packages together
+            chroot_pacman_install "${packages[@]}"
+
+            # Add user to other useful groups
+            arch-chroot /mnt groupadd -f plugdev
+            arch-chroot /mnt usermod -aG adm,audio,video,optical,input,tty,plugdev "$ARCH_LINUX_USERNAME"
+
+            # Add user to gamemode group
+            [ "$ARCH_LINUX_DESKTOP_EXTRAS_ENABLED" = "true" ] && arch-chroot /mnt gpasswd -a "$ARCH_LINUX_USERNAME" gamemode
+
+            # Enable COSMIC greeter (cosmic-greeter)
+            arch-chroot /mnt systemctl enable cosmic-greeter.service
+
+            # Enable services
+            arch-chroot /mnt systemctl enable bluetooth.service
+            arch-chroot /mnt systemctl enable avahi-daemon
+
+            # Extra services
+            if [ "$ARCH_LINUX_DESKTOP_EXTRAS_ENABLED" = "true" ]; then
+                arch-chroot /mnt systemctl enable power-profiles-daemon.service
+            fi
+
+            # Samba (if enabled)
+            if [ "$ARCH_LINUX_DESKTOP_EXTRAS_ENABLED" = "true" ] && [ "$ARCH_LINUX_SAMBA_SHARE_ENABLED" = "true" ]; then
+                # Create samba config
+                mkdir -p "/mnt/etc/samba/"
+                {
+                    echo '[global]'
+                    echo '   workgroup = WORKGROUP'
+                    echo '   server string = Samba Server'
+                    echo '   server role = standalone server'
+                    echo '   security = user'
+                    echo '   map to guest = Bad User'
+                    echo '   log file = /var/log/samba/%m.log'
+                    echo '   max log size = 50'
+                    echo '   client min protocol = SMB2'
+                    echo '   server min protocol = SMB2'
+                    echo
+                    echo '[homes]'
+                    echo '   comment = Home Directory'
+                    echo '   browseable = yes'
+                    echo '   read only = no'
+                    echo '   create mask = 0700'
+                    echo '   directory mask = 0700'
+                    echo '   valid users = %S'
+                    echo
+                    echo '[public]'
+                    echo '   comment = Public Share'
+                    echo '   path = /srv/samba/public'
+                    echo '   browseable = yes'
+                    echo '   guest ok = yes'
+                    echo '   read only = no'
+                    echo '   writable = yes'
+                    echo '   create mask = 0777'
+                    echo '   directory mask = 0777'
+                    echo '   force user = nobody'
+                    echo '   force group = users'
+                } >/mnt/etc/samba/smb.conf
+
+                # Test samba config
+                arch-chroot /mnt testparm -s /etc/samba/smb.conf
+
+                # Create samba public dir
+                arch-chroot /mnt mkdir -p /srv/samba/public
+                arch-chroot /mnt chmod 777 /srv/samba/public
+                arch-chroot /mnt chown -R nobody:users /srv/samba/public
+
+                # Add user as samba user with same password
+                (
+                    echo "$ARCH_LINUX_PASSWORD"
+                    echo "$ARCH_LINUX_PASSWORD"
+                ) | arch-chroot /mnt smbpasswd -s -a "$ARCH_LINUX_USERNAME"
+
+                # Start samba services
+                arch-chroot /mnt systemctl enable smb.service
+                arch-chroot /mnt systemctl enable wsdd.service
+            fi
+
+            # Set environment for COSMIC
+            mkdir -p "/mnt/home/${ARCH_LINUX_USERNAME}/.config/environment.d/"
+            # shellcheck disable=SC2016
+            {
+                echo '# PATH'
+                echo 'PATH="${PATH}:${HOME}/.local/bin"'
+                echo ''
+                echo '# XDG'
+                echo 'XDG_CONFIG_HOME="${HOME}/.config"'
+                echo 'XDG_DATA_HOME="${HOME}/.local/share"'
+                echo 'XDG_STATE_HOME="${HOME}/.local/state"'
+                echo 'XDG_CACHE_HOME="${HOME}/.cache"'
+            } >"/mnt/home/${ARCH_LINUX_USERNAME}/.config/environment.d/00-arch.conf"
+
+            # shellcheck disable=SC2016
+            {
+                echo '# Workaround for Flatpak aliases'
+                echo 'PATH="${PATH}:/var/lib/flatpak/exports/bin"'
+            } >"/mnt/home/${ARCH_LINUX_USERNAME}/.config/environment.d/99-flatpak.conf"
+
+            # Set Flatpak theme access
+            arch-chroot /mnt flatpak override --filesystem=xdg-config/gtk-3.0
+            arch-chroot /mnt flatpak override --filesystem=xdg-config/gtk-4.0
+
+            # Set correct permissions
+            arch-chroot /mnt chown -R "$ARCH_LINUX_USERNAME":"$ARCH_LINUX_USERNAME" "/home/${ARCH_LINUX_USERNAME}"
+
+            # Return
+            process_return 0
+        ) &>"$PROCESS_LOG_TMP_FILE" &
+        process_capture $! "$process_name"
+    fi
+}
+
+# ---------------------------------------------------------------------------------------------------
+
 exec_install_graphics_driver() {
+
     local process_name="Desktop Driver"
     if [ -n "$ARCH_LINUX_DESKTOP_GRAPHICS_DRIVER" ] && [ "$ARCH_LINUX_DESKTOP_GRAPHICS_DRIVER" != "none" ]; then
         process_init "$process_name"
