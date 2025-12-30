@@ -38,9 +38,9 @@ INIT_FILENAME="initialize"
 
 # TEMP
 SCRIPT_TMP_DIR="$(mktemp -d "./.tmp.XXXXX")"
-ERROR_MSG="${SCRIPT_TMP_DIR}/installer.err"
-PROCESS_LOG="${SCRIPT_TMP_DIR}/process.log"
-PROCESS_RET="${SCRIPT_TMP_DIR}/process.ret"
+ERROR_MSG_TMP_FILE="${SCRIPT_TMP_DIR}/installer.err"
+PROCESS_LOG_TMP_FILE="${SCRIPT_TMP_DIR}/process.log"
+PROCESS_RET_TMP_FILE="${SCRIPT_TMP_DIR}/process.ret"
 
 # COLORS
 COLOR_BLACK=0   #  #000000
@@ -128,7 +128,7 @@ main() {
         echo && gum_title "Properties"
 
         # Open Advanced Properties?
-        if [ "$FORCE" = "false" ] && gum_confirm --negative="Skip" "Open Advanced Setup Editor?"; then
+        if [ "$FORCE" = "false" ] && gum_confirm --default=false --negative="Skip" "Open Advanced Setup Editor?"; then
             local header_txt="• Advanced Setup | Save with CTRL + D or ESC and cancel with CTRL + C"
             if gum_write --show-line-numbers --prompt "" --height=12 --width=180 --char-limit=0 --header="${header_txt}" --value="$(cat "$SCRIPT_CONFIG")" >"${SCRIPT_CONFIG}.new"; then
                 mv "${SCRIPT_CONFIG}.new" "${SCRIPT_CONFIG}" && properties_source
@@ -268,7 +268,7 @@ properties_generate() {
         echo "ARCH_LINUX_ROOT_PARTITION='${ARCH_LINUX_ROOT_PARTITION}' # Root partition"
         echo "ARCH_LINUX_FILESYSTEM='${ARCH_LINUX_FILESYSTEM}' # Filesystem | Available: btrfs, ext4"
         echo "ARCH_LINUX_BOOTLOADER='${ARCH_LINUX_BOOTLOADER}' # Bootloader | Available: grub, systemd"
-        echo "ARCH_LINUX_SNAPPER_ENABLED='${ARCH_LINUX_SNAPPER_ENABLED}' # BTRFS Snapper enabled | Disable: false"
+        echo "ARCH_LINUX_BTRFS_SNAPPER_ENABLED='${ARCH_LINUX_BTRFS_SNAPPER_ENABLED}' # BTRFS Snapper enabled | Disable: false"
         echo "ARCH_LINUX_ENCRYPTION_ENABLED='${ARCH_LINUX_ENCRYPTION_ENABLED}' # Disk encryption | Disable: false"
         echo "ARCH_LINUX_TIMEZONE='${ARCH_LINUX_TIMEZONE}' # Timezone | Show available: ls /usr/share/zoneinfo/** | Example: Europe/Berlin"
         echo "ARCH_LINUX_LOCALE_LANG='${ARCH_LINUX_LOCALE_LANG}' # Locale | Show available: ls /usr/share/i18n/locales | Example: de_DE"
@@ -303,7 +303,7 @@ properties_preset_source() {
     # Default presets
     [ -z "$ARCH_LINUX_HOSTNAME" ] && ARCH_LINUX_HOSTNAME="arch-linux"
     [ -z "$ARCH_LINUX_KERNEL" ] && ARCH_LINUX_KERNEL="linux-zen"
-    [ -z "$ARCH_LINUX_SNAPPER_ENABLED" ] && ARCH_LINUX_SNAPPER_ENABLED='true'
+    [ -z "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" ] && ARCH_LINUX_BTRFS_SNAPPER_ENABLED='true'
     [ -z "$ARCH_LINUX_SHELL_ENHANCEMENT_FISH_ENABLED" ] && ARCH_LINUX_SHELL_ENHANCEMENT_FISH_ENABLED="true"
     [ -z "$ARCH_LINUX_DESKTOP_EXTRAS_ENABLED" ] && ARCH_LINUX_DESKTOP_EXTRAS_ENABLED='true'
     [ -z "$ARCH_LINUX_DESKTOP_KEYBOARD_MODEL" ] && ARCH_LINUX_DESKTOP_KEYBOARD_MODEL="pc105"
@@ -329,7 +329,7 @@ properties_preset_source() {
 
         # Core preset
         if [[ $preset == core* ]]; then
-            ARCH_LINUX_SNAPPER_ENABLED='false'
+            ARCH_LINUX_BTRFS_SNAPPER_ENABLED='false'
             ARCH_LINUX_DESKTOP_ENABLED='false'
             ARCH_LINUX_MULTILIB_ENABLED='false'
             ARCH_LINUX_HOUSEKEEPING_ENABLED='false'
@@ -341,7 +341,7 @@ properties_preset_source() {
 
         # Desktop preset
         if [[ $preset == desktop* ]]; then
-            ARCH_LINUX_SNAPPER_ENABLED='true'
+            ARCH_LINUX_BTRFS_SNAPPER_ENABLED='true'
             ARCH_LINUX_DESKTOP_EXTRAS_ENABLED='true'
             ARCH_LINUX_SAMBA_SHARE_ENABLED='true'
             ARCH_LINUX_CORE_TWEAKS_ENABLED="true"
@@ -499,7 +499,7 @@ select_filesystem() {
 select_bootloader() {
     if [ -z "$ARCH_LINUX_BOOTLOADER" ]; then
         local user_input options
-        options=("grub" "systemd")
+        options=("systemd" "grub")
         user_input=$(gum_choose --header "+ Choose Bootloader (snapshot menu: grub)" "${options[@]}") || trap_gum_exit_confirm
         [ -z "$user_input" ] && return 1                        # Check if new value is null
         ARCH_LINUX_BOOTLOADER="$user_input" && properties_generate # Set value and generate properties file
@@ -590,14 +590,14 @@ select_enable_desktop_slim() {
     if [ "$ARCH_LINUX_DESKTOP_ENABLED" = "true" ]; then
         if [ -z "$ARCH_LINUX_DESKTOP_SLIM_ENABLED" ]; then
             local user_input
-            gum_confirm "Enable Desktop Slim Mode? (GNOME Core Apps only)" --affirmative="No (default)" --negative="Yes"
+            gum_confirm "Enable Desktop Slim Mode? (GNOME Core Apps only)"
             local user_confirm=$?
             [ $user_confirm = 130 ] && {
                 trap_gum_exit_confirm
                 return 1
             }
-            [ $user_confirm = 1 ] && user_input="true"
-            [ $user_confirm = 0 ] && user_input="false"
+            [ $user_confirm = 1 ] && user_input="false"
+            [ $user_confirm = 0 ] && user_input="true"
             ARCH_LINUX_DESKTOP_SLIM_ENABLED="$user_input" && properties_generate # Set value and generate properties file
         fi
         gum_property "Desktop Slim Mode" "$ARCH_LINUX_DESKTOP_SLIM_ENABLED"
@@ -751,7 +751,7 @@ exec_init_installation() {
         [ "$ARCH_LINUX_ECN_ENABLED" = "false" ] && sysctl net.ipv4.tcp_ecn=0
         pacman -Sy --noconfirm archlinux-keyring # Update keyring
         process_return 0
-    ) &>"$PROCESS_LOG" &
+    ) &>"$PROCESS_LOG_TMP_FILE" &
     process_capture $! "$process_name"
 }
 
@@ -834,7 +834,7 @@ exec_prepare_disk() {
 
         # Return
         process_return 0
-    ) &>"$PROCESS_LOG" &
+    ) &>"$PROCESS_LOG_TMP_FILE" &
     process_capture $! "$process_name"
 }
 
@@ -859,7 +859,7 @@ exec_pacstrap_core() {
         [ "$ARCH_LINUX_BOOTLOADER" = "grub" ] && packages+=(grub grub-btrfs)
 
         # Add snapper packages
-        [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_SNAPPER_ENABLED" = "true" ] && packages+=(snapper)
+        [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" = "true" ] && packages+=(snapper)
 
         # Install core packages and initialize an empty pacman keyring in the target
         pacstrap -K /mnt "${packages[@]}"
@@ -1001,7 +1001,7 @@ exec_pacstrap_core() {
             arch-chroot /mnt systemctl enable btrfs-scrub@snapshots.timer
         fi
 
-        if [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_SNAPPER_ENABLED" = "true" ]; then
+        if [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" = "true" ]; then
 
             # Create snapper config
             arch-chroot /mnt umount /.snapshots
@@ -1050,7 +1050,7 @@ exec_pacstrap_core() {
 
         # Return
         process_return 0
-    ) &>"$PROCESS_LOG" &
+    ) &>"$PROCESS_LOG_TMP_FILE" &
     process_capture $! "$process_name"
 }
 
@@ -1370,7 +1370,7 @@ exec_install_desktop() {
 
             # Return
             process_return 0
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1448,7 +1448,7 @@ exec_install_graphics_driver() {
                 ;;
             esac
             process_return 0
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1464,7 +1464,7 @@ exec_enable_multilib() {
             sed -i '/\[multilib\]/,/Include/s/^#//' /mnt/etc/pacman.conf
             arch-chroot /mnt pacman -Syyu --noconfirm
             process_return 0
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1481,7 +1481,7 @@ exec_install_bootsplash() {
             sed -i "s/base systemd keyboard/base systemd plymouth keyboard/g" /mnt/etc/mkinitcpio.conf # Configure mkinitcpio                                                # Install Arch Linux plymouth theme from AUR
             arch-chroot /mnt plymouth-set-default-theme -R bgrt                                     # Set Theme & rebuild initram disk
             process_return 0                                                                           # Return
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1502,7 +1502,7 @@ exec_install_aur_helper() {
                 sed -i 's/^#SudoLoop/SudoLoop/g' /mnt/etc/paru.conf
             fi
             process_return 0 # Return
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1533,7 +1533,7 @@ exec_install_housekeeping() {
             arch-chroot /mnt systemctl enable smartd               # SMART check service (smartmontools)
             arch-chroot /mnt systemctl enable irqbalance.service   # IRQ balancing daemon (irqbalance)
             process_return 0                                       # Return
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1712,7 +1712,7 @@ exec_install_shell_enhancement() {
 
             # Finished
             process_return 0
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1752,7 +1752,7 @@ exec_install_vm_support() {
             *) log_info "No VM detected" ;; # Do nothing
             esac
             process_return 0 # Return
-        ) &>"$PROCESS_LOG" &
+        ) &>"$PROCESS_LOG_TMP_FILE" &
         process_capture $! "$process_name"
     fi
 }
@@ -1802,10 +1802,10 @@ exec_finalize_arch_linux() {
         arch-chroot /mnt bash -c 'pacman -Qtd &>/dev/null && pacman -Rns --noconfirm $(pacman -Qtdq) || true'
 
         # Install snapper pacman hook
-        [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_SNAPPER_ENABLED" = "true" ] && chroot_pacman_install snap-pac
+        [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" = "true" ] && chroot_pacman_install snap-pac
 
         # Add pacman btrfs hook (need to place on the end of script)
-        if [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_SNAPPER_ENABLED" = "false" ]; then
+        if [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" = "false" ]; then
             # Create pacman hook (auto create snapshot on pre-transaction)
             mkdir -p /mnt/etc/pacman.d/hooks/
             # shellcheck disable=SC2016
@@ -1826,7 +1826,7 @@ exec_finalize_arch_linux() {
         fi
 
         process_return 0 # Return
-    ) &>"$PROCESS_LOG" &
+    ) &>"$PROCESS_LOG_TMP_FILE" &
     process_capture $! "$process_name"
 }
 
@@ -1907,7 +1907,7 @@ chroot_pacman_remove() { arch-chroot /mnt pacman -Rn --noconfirm "$@" || return 
 # shellcheck disable=SC2317
 trap_error() {
     # If process calls this trap, write error to file to use in exit trap
-    echo "Command '${BASH_COMMAND}' failed with exit code $? in function '${1}' (line ${2})" >"$ERROR_MSG"
+    echo "Command '${BASH_COMMAND}' failed with exit code $? in function '${1}' (line ${2})" >"$ERROR_MSG_TMP_FILE"
 }
 
 # shellcheck disable=SC2317
@@ -1915,7 +1915,7 @@ trap_exit() {
     local result_code="$?"
 
     # Read error msg from file (written in error trap)
-    local error && [ -f "$ERROR_MSG" ] && error="$(<"$ERROR_MSG")" && rm -f "$ERROR_MSG"
+    local error && [ -f "$ERROR_MSG_TMP_FILE" ] && error="$(<"$ERROR_MSG_TMP_FILE")" && rm -f "$ERROR_MSG_TMP_FILE"
 
     # Cleanup
     unset ARCH_LINUX_PASSWORD
@@ -1942,8 +1942,8 @@ trap_exit() {
 # ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 process_init() {
-    [ -f "$PROCESS_RET" ] && gum_fail "${PROCESS_RET} already exists" && exit 1
-    echo 1 >"$PROCESS_RET" # Init result with 1
+    [ -f "$PROCESS_RET_TMP_FILE" ] && gum_fail "${PROCESS_RET_TMP_FILE} already exists" && exit 1
+    echo 1 >"$PROCESS_RET_TMP_FILE" # Init result with 1
     log_proc "${1}..."     # Log starting
 }
 
@@ -1954,7 +1954,7 @@ process_capture() {
 
     # Show gum spinner until pid is not exists anymore and set user_canceled to true on failure
     gum_spin --title "${process_name}..." -- bash -c "while kill -0 $pid &> /dev/null; do sleep 1; done" || user_canceled="true"
-    cat "$PROCESS_LOG" >>"$SCRIPT_LOG" # Write process log to logfile
+    cat "$PROCESS_LOG_TMP_FILE" >>"$SCRIPT_LOG" # Write process log to logfile
 
     # When user press ctrl + c while process is running
     if [ "$user_canceled" = "true" ]; then
@@ -1963,18 +1963,18 @@ process_capture() {
     fi
 
     # Handle error while executing process
-    [ ! -f "$PROCESS_RET" ] && gum_fail "${PROCESS_RET} not found (do not init process?)" && exit 1
-    [ "$(<"$PROCESS_RET")" != "0" ] && gum_fail "${process_name} failed" && exit 1 # If process failed (result code 0 was not write in the end)
+    [ ! -f "$PROCESS_RET_TMP_FILE" ] && gum_fail "${PROCESS_RET_TMP_FILE} not found (do not init process?)" && exit 1
+    [ "$(<"$PROCESS_RET_TMP_FILE")" != "0" ] && gum_fail "${process_name} failed" && exit 1 # If process failed (result code 0 was not write in the end)
 
     # Finish
-    rm -f "$PROCESS_RET"                 # Remove process result file
+    rm -f "$PROCESS_RET_TMP_FILE"                 # Remove process result file
     gum_proc "${process_name}" "success" # Print process success
 }
 
 process_return() {
     # 1. Write from sub process 0 to file when succeed (at the end of the script part)
     # 2. Rread from parent process after sub process finished (0=success 1=failed)
-    echo "$1" >"$PROCESS_RET"
+    echo "$1" >"$PROCESS_RET_TMP_FILE"
     exit "$1"
 }
 
