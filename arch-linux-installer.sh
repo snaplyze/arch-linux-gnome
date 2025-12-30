@@ -313,7 +313,6 @@ properties_preset_source() {
     [ -z "$ARCH_LINUX_SAMBA_SHARE_ENABLED" ] && ARCH_LINUX_SAMBA_SHARE_ENABLED="true"
     [ -z "$ARCH_LINUX_ECN_ENABLED" ] && ARCH_LINUX_ECN_ENABLED="true"
     [ -z "$ARCH_LINUX_VM_SUPPORT_ENABLED" ] && ARCH_LINUX_VM_SUPPORT_ENABLED="true"
-    [ -z "$ARCH_LINUX_DESKTOP_TYPE" ] && ARCH_LINUX_DESKTOP_TYPE="gnome"
 
     # Set microcode
     [ -z "$ARCH_LINUX_MICROCODE" ] && grep -E "GenuineIntel" &>/dev/null <<<"$(lscpu)" && ARCH_LINUX_MICROCODE="intel-ucode"
