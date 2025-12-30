@@ -884,6 +884,11 @@ exec_pacstrap_core() {
         # Add snapper packages
         [ "$ARCH_LINUX_FILESYSTEM" = "btrfs" ] && [ "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" = "true" ] && packages+=(snapper)
 
+        # Create vconsole.conf BEFORE pacstrap (required for mkinitcpio keymap hook during kernel install)
+        mkdir -p /mnt/etc
+        echo "KEYMAP=$ARCH_LINUX_VCONSOLE_KEYMAP" >/mnt/etc/vconsole.conf
+        [ -n "$ARCH_LINUX_VCONSOLE_FONT" ] && echo "FONT=$ARCH_LINUX_VCONSOLE_FONT" >>/mnt/etc/vconsole.conf
+
         # Install core packages and initialize an empty pacman keyring in the target
         pacstrap -K /mnt "${packages[@]}"
 
@@ -908,9 +913,7 @@ exec_pacstrap_core() {
             echo 'vm.page-cluster = 0'
         } >/mnt/etc/sysctl.d/99-vm-zram-parameters.conf
 
-        # Set console keymap in /etc/vconsole.conf
-        echo "KEYMAP=$ARCH_LINUX_VCONSOLE_KEYMAP" >/mnt/etc/vconsole.conf
-        [ -n "$ARCH_LINUX_VCONSOLE_FONT" ] && echo "FONT=$ARCH_LINUX_VCONSOLE_FONT" >>/mnt/etc/vconsole.conf
+        # vconsole.conf already created before pacstrap (see above)
 
         # Set & Generate Locale
         echo "LANG=${ARCH_LINUX_LOCALE_LANG}.UTF-8" >/mnt/etc/locale.conf
