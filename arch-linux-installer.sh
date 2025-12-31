@@ -890,7 +890,11 @@ exec_pacstrap_core() {
         [ -n "$ARCH_LINUX_VCONSOLE_FONT" ] && echo "FONT=$ARCH_LINUX_VCONSOLE_FONT" >>/mnt/etc/vconsole.conf
 
         # Install core packages and initialize an empty pacman keyring in the target
-        pacstrap -K /mnt "${packages[@]}"
+        if ! pacstrap -K /mnt "${packages[@]}"; then
+            echo "ERROR: pacstrap failed to install packages"
+            process_return 1
+            return 1
+        fi
 
         # Generate /etc/fstab
         genfstab -U /mnt >>/mnt/etc/fstab
