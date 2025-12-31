@@ -372,8 +372,15 @@ properties_preset_source() {
 select_username() {
     if [ -z "$ARCH_LINUX_USERNAME" ]; then
         local user_input
-        user_input=$(gum_input --header "+ Enter Username") || trap_gum_exit_confirm
-        [ -z "$user_input" ] && return 1                      # Check if new value is null
+        user_input=$(gum_input --header "+ Enter Username (lowercase, must start with letter)") || trap_gum_exit_confirm
+        [ -z "$user_input" ] && return 1 # Check if new value is null
+        
+        # Validate username: must start with a letter, contain only lowercase letters, digits, underscores, hyphens
+        if [[ ! "$user_input" =~ ^[a-z][a-z0-9_-]*$ ]]; then
+            gum_confirm --affirmative="Ok" --negative="" "Invalid username! Must start with a lowercase letter and contain only a-z, 0-9, _ or -"
+            return 1
+        fi
+        
         ARCH_LINUX_USERNAME="$user_input" && properties_generate # Set value and generate properties file
     fi
     gum_property "Username" "$ARCH_LINUX_USERNAME"
