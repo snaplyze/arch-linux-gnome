@@ -103,6 +103,7 @@ main() {
         # Selectors
         echo && gum_title "Core Setup"
         until select_username; do :; done
+        until select_hostname; do :; done
         until select_password; do :; done
         until select_timezone; do :; done
         until select_language; do :; done
@@ -304,7 +305,7 @@ properties_generate() {
 properties_preset_source() {
 
     # Default presets
-    [ -z "$ARCH_LINUX_HOSTNAME" ] && ARCH_LINUX_HOSTNAME="arch-linux"
+    # ARCH_LINUX_HOSTNAME is set via select_hostname() with default value "arch-linux"
     [ -z "$ARCH_LINUX_KERNEL" ] && ARCH_LINUX_KERNEL="linux-zen"
     [ -z "$ARCH_LINUX_BTRFS_SNAPPER_ENABLED" ] && ARCH_LINUX_BTRFS_SNAPPER_ENABLED='true'
     [ -z "$ARCH_LINUX_SHELL_ENHANCEMENT_FISH_ENABLED" ] && ARCH_LINUX_SHELL_ENHANCEMENT_FISH_ENABLED="true"
@@ -384,6 +385,27 @@ select_username() {
         ARCH_LINUX_USERNAME="$user_input" && properties_generate # Set value and generate properties file
     fi
     gum_property "Username" "$ARCH_LINUX_USERNAME"
+    return 0
+}
+
+# ---------------------------------------------------------------------------------------------------
+
+select_hostname() {
+    if [ -z "$ARCH_LINUX_HOSTNAME" ]; then
+        local user_input
+        user_input=$(gum_input --header "+ Enter Hostname" --value "arch-linux") || trap_gum_exit_confirm
+        [ -z "$user_input" ] && return 1 # Check if new value is null
+        
+        # Validate hostname: must start with a letter or digit, contain only lowercase letters, digits, hyphens
+        # Cannot start or end with hyphen, max 63 chars
+        if [[ ! "$user_input" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+            gum_confirm --affirmative="Ok" --negative="" "Invalid hostname! Must start with letter/digit, contain only a-z, 0-9, or hyphen (-)"
+            return 1
+        fi
+        
+        ARCH_LINUX_HOSTNAME="$user_input" && properties_generate # Set value and generate properties file
+    fi
+    gum_property "Hostname" "$ARCH_LINUX_HOSTNAME"
     return 0
 }
 
